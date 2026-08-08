@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RICESPIN</title>
+<meta name="description" content="A single grain of rice, spinning forever. That's it. That's the website.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍚</text></svg>">
+<style>
+  :root {
+    --hot: #ff2fb9;
+    --cyan: #23f0ff;
+    --lime: #b6ff00;
+    --ink: #08060f;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    height: 100%;
+    margin: 0;
+  }
+
+  body {
+    background: var(--ink);
+    color: #fff;
+    font-family: "Comic Sans MS", "Comic Sans", "Chalkboard SE", "Segoe UI", system-ui, sans-serif;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    text-align: center;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Throbbing background, the way the old web intended. */
+  .backdrop {
+    position: fixed;
+    inset: -20%;
+    z-index: 0;
+    background:
+      radial-gradient(circle at 50% 50%, rgba(255,47,185,.35), transparent 45%),
+      repeating-conic-gradient(from 0deg at 50% 50%,
+        #12002b 0deg 15deg,
+        #2a0050 15deg 30deg);
+    animation: swirl 24s linear infinite, pulse 1.2s ease-in-out infinite alternate;
+    filter: saturate(1.4);
+  }
+
+  @keyframes swirl { to { transform: rotate(360deg); } }
+  @keyframes pulse { to { filter: saturate(2) brightness(1.35); } }
+
+  .scanlines {
+    position: fixed;
+    inset: 0;
+    z-index: 3;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      to bottom,
+      rgba(0,0,0,.22) 0px,
+      rgba(0,0,0,.22) 1px,
+      transparent 1px,
+      transparent 3px);
+    mix-blend-mode: multiply;
+  }
+
+  header, main, footer {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+  }
+
+  header { padding: 2vh 1rem 0; }
+
+  h1 {
+    margin: 0;
+    font-size: clamp(2.2rem, 11vw, 7rem);
+    letter-spacing: .08em;
+    line-height: .95;
+    font-weight: 900;
+    color: var(--lime);
+    text-shadow:
+      3px 3px 0 var(--hot),
+      6px 6px 0 var(--cyan),
+      0 0 26px rgba(182,255,0,.6);
+    animation: wobble 2.4s ease-in-out infinite;
+  }
+
+  @keyframes wobble {
+    0%, 100% { transform: rotate(-2deg) scale(1); }
+    50%      { transform: rotate(2deg) scale(1.04); }
+  }
+
+  .tagline {
+    margin: .4rem 0 0;
+    font-size: clamp(.8rem, 2.6vw, 1.3rem);
+    color: var(--cyan);
+    text-shadow: 0 0 12px var(--cyan);
+  }
+
+  .blink { animation: blink 1s steps(2, start) infinite; }
+  @keyframes blink { to { visibility: hidden; } }
+
+  /* ---- the star of the show ---- */
+  main {
+    flex: 1;
+    display: grid;
+    place-items: center;
+    perspective: 900px;
+    min-height: 0;
+  }
+
+  .stage {
+    position: relative;
+    width: min(56vmin, 500px);
+    aspect-ratio: 1;
+    display: grid;
+    place-items: center;
+    transform-style: preserve-3d;
+    animation: bob 2.6s ease-in-out infinite;
+  }
+
+  @keyframes bob {
+    0%, 100% { transform: translateY(-2%); }
+    50%      { transform: translateY(2%); }
+  }
+
+  .rice {
+    width: 100%;
+    height: 100%;
+    transform-style: preserve-3d;
+    animation: spin var(--spin-duration, 1.1s) linear infinite;
+    filter: drop-shadow(0 0 26px rgba(255,255,255,.55));
+  }
+
+  @keyframes spin { to { transform: rotateY(360deg); } }
+
+  .rice svg { width: 100%; height: 100%; display: block; }
+
+  .shadow {
+    position: absolute;
+    bottom: 8%;
+    width: 34%;
+    height: 5%;
+    border-radius: 50%;
+    background: radial-gradient(ellipse at center, rgba(0,0,0,.65), transparent 70%);
+    animation: shrink 2.6s ease-in-out infinite;
+  }
+
+  @keyframes shrink {
+    0%, 100% { transform: scaleX(1);   opacity: .55; }
+    50%      { transform: scaleX(.78); opacity: .35; }
+  }
+
+  /* ---- counter + controls ---- */
+  footer {
+    padding: 0 1rem 2.5vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: .75rem;
+  }
+
+  .counter {
+    font-family: "Courier New", monospace;
+    font-size: clamp(1.1rem, 4.4vw, 2.2rem);
+    font-weight: 700;
+    color: #fff;
+    background: rgba(0,0,0,.55);
+    border: 3px solid var(--lime);
+    border-radius: 10px;
+    padding: .35em .8em;
+    box-shadow: 0 0 22px rgba(182,255,0,.55), inset 0 0 18px rgba(182,255,0,.2);
+    white-space: nowrap;
+  }
+
+  .counter b {
+    color: var(--lime);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+    justify-content: center;
+  }
+
+  button {
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+    color: var(--ink);
+    background: linear-gradient(180deg, #fff, #c9c9ff);
+    border: 3px outset #fff;
+    border-radius: 8px;
+    padding: .5em 1em;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    transition: transform .08s ease;
+  }
+
+  button:hover  { background: linear-gradient(180deg, var(--lime), #6fbf00); }
+  button:active { transform: translateY(2px) scale(.97); border-style: inset; }
+  button:focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }
+
+  .marquee {
+    width: 100%;
+    overflow: hidden;
+    white-space: nowrap;
+    font-weight: 700;
+    color: var(--hot);
+    text-shadow: 0 0 10px var(--hot);
+    font-size: clamp(.75rem, 2.4vw, 1.1rem);
+  }
+
+  .marquee span {
+    display: inline-block;
+    padding-left: 100%;
+    animation: slide 18s linear infinite;
+  }
+
+  @keyframes slide { to { transform: translateX(-100%); } }
+
+  .hint {
+    font-size: .8rem;
+    opacity: .65;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .backdrop, h1, .stage, .shadow, .blink, .marquee span { animation: none !important; }
+    .rice { animation-duration: 6s; }
+  }
+</style>
+</head>
+<body>
+
+<div class="backdrop" aria-hidden="true"></div>
+<div class="scanlines" aria-hidden="true"></div>
+
+<header>
+  <h1>RICE&thinsp;SPIN</h1>
+  <p class="tagline">One grain. Infinite rotations. <span class="blink">No refunds.</span></p>
+</header>
+
+<main>
+  <div class="stage">
+    <div class="shadow" aria-hidden="true"></div>
+    <div class="rice" id="rice" role="img" aria-label="A single grain of rice spinning endlessly">
+      <!-- A grain of rice, rendered with more care than it strictly deserves. -->
+      <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="grainBody" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%"   stop-color="#ffffff"/>
+            <stop offset="45%"  stop-color="#f7f2e4"/>
+            <stop offset="100%" stop-color="#d8cdb4"/>
+          </linearGradient>
+          <radialGradient id="sheen" cx="35%" cy="28%" r="55%">
+            <stop offset="0%"   stop-color="#ffffff" stop-opacity=".95"/>
+            <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+          </radialGradient>
+        </defs>
+
+        <!-- Tilted a little so it tumbles rather than pirouettes. -->
+        <g transform="rotate(-13 100 100)">
+          <!-- grain silhouette: tapered at the top, blunt at the base -->
+          <path d="M100 22
+                   C116 42 134 70 134 110
+                   C134 152 119 180 100 180
+                   C81 180 66 152 66 110
+                   C66 70 84 42 100 22 Z"
+                fill="url(#grainBody)" stroke="#bdb096" stroke-width="2"/>
+
+          <!-- the little seam every grain of rice has -->
+          <path d="M100 42 C108 76 108 142 100 168"
+                fill="none" stroke="#cabea4" stroke-width="2" stroke-linecap="round" opacity=".75"/>
+
+          <ellipse cx="97" cy="100" rx="28" ry="68" fill="url(#sheen)"/>
+        </g>
+      </svg>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="counter">
+    ROTATIONS: <b id="count">0</b> &nbsp;|&nbsp; RPM: <b id="rpm">55</b>
+  </div>
+
+  <div class="controls">
+    <button id="faster" type="button">Faster</button>
+    <button id="slower" type="button">Slower</button>
+    <button id="reverse" type="button">Reverse</button>
+    <button id="sound" type="button" aria-pressed="false">Sound: Off</button>
+  </div>
+
+  <p class="hint">Nobody is going to stop this. Not even you.</p>
+
+  <div class="marquee" aria-hidden="true">
+    <span>&#127834; you are currently watching a grain of rice spin &#127834; it has been spinning since you got here &#127834; it will spin after you leave &#127834; tell your friends &#127834; tell your enemies &#127834;</span>
+  </div>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+
+  var rice    = document.getElementById("rice");
+  var countEl = document.getElementById("count");
+  var rpmEl   = document.getElementById("rpm");
+
+  var rpm       = 55;   // rotations per minute
+  var direction = 1;    // 1 = normal, -1 = reverse
+  var rotations = 0;    // fractional rotations completed
+  var last      = null;
+
+  function applySpin() {
+    rice.style.setProperty("--spin-duration", (60 / rpm) + "s");
+    rice.style.animationDirection = direction === 1 ? "normal" : "reverse";
+    rpmEl.textContent = Math.round(rpm);
+  }
+
+  // The counter tracks elapsed rotations rather than listening for animation
+  // events, so it keeps working when the speed changes mid-spin.
+  function tick(now) {
+    if (last !== null) {
+      rotations += ((now - last) / 1000) * (rpm / 60);
+      countEl.textContent = Math.floor(rotations).toLocaleString();
+    }
+    last = now;
+    requestAnimationFrame(tick);
+  }
+
+  // A browser tab that is hidden throttles rAF; don't credit that as spinning.
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden) { last = null; }
+  });
+
+  document.getElementById("faster").addEventListener("click", function () {
+    rpm = Math.min(rpm * 1.35, 900);
+    applySpin();
+  });
+
+  document.getElementById("slower").addEventListener("click", function () {
+    rpm = Math.max(rpm / 1.35, 3);
+    applySpin();
+  });
+
+  document.getElementById("reverse").addEventListener("click", function () {
+    direction *= -1;
+    applySpin();
+  });
+
+  /* ---- optional synth loop, muted until asked for ---- */
+  var audioCtx = null;
+  var loopTimer = null;
+  var soundBtn = document.getElementById("sound");
+
+  function blip(when, freq, dur, type, gain) {
+    var osc = audioCtx.createOscillator();
+    var amp = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, when);
+    amp.gain.setValueAtTime(0, when);
+    amp.gain.linearRampToValueAtTime(gain, when + 0.01);
+    amp.gain.exponentialRampToValueAtTime(0.0001, when + dur);
+    osc.connect(amp).connect(audioCtx.destination);
+    osc.start(when);
+    osc.stop(when + dur + 0.02);
+  }
+
+  // Two bars of cheerful nonsense, scheduled a bar ahead of playback.
+  var NOTES = [392, 523.25, 587.33, 523.25, 466.16, 523.25, 587.33, 698.46];
+  var STEP = 0.18;
+  var nextNoteTime = 0;
+  var step = 0;
+
+  function scheduler() {
+    while (nextNoteTime < audioCtx.currentTime + 0.3) {
+      blip(nextNoteTime, NOTES[step % NOTES.length], STEP * 0.9, "square", 0.06);
+      if (step % 4 === 0) { blip(nextNoteTime, 98, 0.12, "triangle", 0.12); }
+      nextNoteTime += STEP;
+      step++;
+    }
+  }
+
+  soundBtn.addEventListener("click", function () {
+    if (loopTimer) {
+      clearInterval(loopTimer);
+      loopTimer = null;
+      soundBtn.textContent = "Sound: Off";
+      soundBtn.setAttribute("aria-pressed", "false");
+      return;
+    }
+    if (!audioCtx) {
+      var Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) { soundBtn.disabled = true; soundBtn.textContent = "No sound"; return; }
+      audioCtx = new Ctx();
+    }
+    audioCtx.resume();
+    nextNoteTime = audioCtx.currentTime + 0.05;
+    loopTimer = setInterval(scheduler, 50);
+    soundBtn.textContent = "Sound: On";
+    soundBtn.setAttribute("aria-pressed", "true");
+  });
+
+  applySpin();
+  requestAnimationFrame(tick);
+})();
+</script>
+
+</body>
+</html>
