@@ -37,10 +37,16 @@
     -webkit-tap-highlight-color: transparent;
   }
 
-  /* Throbbing background, the way the old web intended. */
+  /* Throbbing background, the way the old web intended.
+     It must be square and large enough to cover the viewport's diagonal, or
+     the corners swing inside the screen as it turns and leave black wedges. */
   .backdrop {
     position: fixed;
-    inset: -20%;
+    top: 50%;
+    left: 50%;
+    width: 160vmax;
+    height: 160vmax;
+    margin: -80vmax 0 0 -80vmax;
     z-index: 0;
     background:
       radial-gradient(circle at 50% 50%, rgba(255,47,185,.35), transparent 45%),
@@ -183,6 +189,59 @@
     font-variant-numeric: tabular-nums;
   }
 
+  .stats {
+    font-family: "Courier New", monospace;
+    font-size: clamp(.65rem, 2.2vw, .9rem);
+    letter-spacing: .02em;
+    color: var(--cyan);
+    text-shadow: 0 0 8px rgba(35,240,255,.7);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Turbo mode: earned at 1000 rotations, and it should look earned. */
+  .banner {
+    position: fixed;
+    left: 50%;
+    top: 38%;
+    z-index: 5;
+    transform: translate(-50%, -50%) rotate(-6deg);
+    padding: .5em 1.1em;
+    font-size: clamp(1.1rem, 5vw, 2.6rem);
+    font-weight: 900;
+    letter-spacing: .06em;
+    color: #fff;
+    background: var(--hot);
+    border: 4px solid var(--lime);
+    border-radius: 12px;
+    box-shadow: 0 0 40px var(--hot);
+    text-shadow: 2px 2px 0 #000;
+    animation: slam .5s cubic-bezier(.2, 1.7, .4, 1) both, throb .34s linear 6;
+  }
+
+  .banner[hidden] { display: none; }
+
+  @keyframes slam {
+    from { transform: translate(-50%, -50%) rotate(-6deg) scale(4); opacity: 0; }
+    to   { transform: translate(-50%, -50%) rotate(-6deg) scale(1); opacity: 1; }
+  }
+
+  /* Paired keyframes so each colour is held flat for half the cycle — a lone
+     50% stop interpolates through a muddy midpoint instead of flashing. */
+  @keyframes throb {
+    0%,   49.9% { background: var(--hot);  color: #fff; }
+    50%,  100%  { background: var(--cyan); color: var(--ink); }
+  }
+
+  body.turbo .counter {
+    border-color: var(--hot);
+    box-shadow: 0 0 26px var(--hot), inset 0 0 18px rgba(255,47,185,.3);
+  }
+
+  body.turbo #faster {
+    background: linear-gradient(180deg, var(--hot), #a3006e);
+    color: #fff;
+  }
+
   .controls {
     display: flex;
     flex-wrap: wrap;
@@ -232,7 +291,7 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .backdrop, h1, .stage, .shadow, .blink, .marquee span { animation: none !important; }
+    .backdrop, h1, .stage, .shadow, .blink, .marquee span, .banner { animation: none !important; }
     .rice { animation-duration: 6s; }
   }
 </style>
@@ -286,19 +345,28 @@
   </div>
 </main>
 
+<div class="banner" id="banner" hidden>TURBO UNLOCKED &mdash; 6767 RPM</div>
+
 <footer>
   <div class="counter">
     ROTATIONS: <b id="count">0</b> &nbsp;|&nbsp; RPM: <b id="rpm">55</b>
   </div>
+
+  <p class="stats">
+    this visit: <span id="visitCount">0</span>
+    &middot; visits: <span id="visits">1</span>
+    &middot; top rpm: <span id="topRpm">55</span>
+  </p>
 
   <div class="controls">
     <button id="faster" type="button">Faster</button>
     <button id="slower" type="button">Slower</button>
     <button id="reverse" type="button">Reverse</button>
     <button id="sound" type="button" aria-pressed="false">Sound: Off</button>
+    <button id="reset" type="button">Reset</button>
   </div>
 
-  <p class="hint">Nobody is going to stop this. Not even you.</p>
+  <p class="hint" id="hint">Nobody is going to stop this. Not even you.</p>
 
   <div class="marquee" aria-hidden="true">
     <span>&#127834; you are currently watching a grain of rice spin &#127834; it has been spinning since you got here &#127834; it will spin after you leave &#127834; tell your friends &#127834; tell your enemies &#127834;</span>
@@ -309,27 +377,107 @@
 (function () {
   "use strict";
 
-  var rice    = document.getElementById("rice");
-  var countEl = document.getElementById("count");
-  var rpmEl   = document.getElementById("rpm");
+  var rice     = document.getElementById("rice");
+  var countEl  = document.getElementById("count");
+  var rpmEl    = document.getElementById("rpm");
+  var visitEl  = document.getElementById("visitCount");
+  var visitsEl = document.getElementById("visits");
+  var topEl    = document.getElementById("topRpm");
+  var banner   = document.getElementById("banner");
+  var hint     = document.getElementById("hint");
 
-  var rpm       = 55;   // rotations per minute
-  var direction = 1;    // 1 = normal, -1 = reverse
-  var rotations = 0;    // fractional rotations completed
-  var last      = null;
+  var BASE_MAX   = 900;   // the speed limit everyone starts with
+  var TURBO_MAX  = 6767;  // lifted once the odometer rolls past the milestone
+  var UNLOCK_AT  = 1000;  // rotations needed to earn it
+  var MIN_RPM    = 3;
+  var STORE_KEY  = "ricespin.v1";
+
+  /* ---- saved state ---------------------------------------------------- */
+  // Any of this can throw: Safari private mode and file:// origins both
+  // refuse localStorage. The site has to work either way, so failures are
+  // swallowed and the page just runs without a memory.
+  function load() {
+    try {
+      var raw = window.localStorage.getItem(STORE_KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  var saved = load();
+
+  var rotations = Number(saved.rotations) || 0;   // all-time, fractional
+  var visitBase = rotations;                      // where this visit started
+  var rpm       = Number(saved.rpm) || 55;
+  var direction = saved.direction === -1 ? -1 : 1;
+  var unlocked  = saved.unlocked === true || rotations >= UNLOCK_AT;
+  var visits    = (Number(saved.visits) || 0) + 1;
+  var topRpm    = Number(saved.topRpm) || rpm;
+  var soundOn   = saved.soundOn === true;         // last explicit sound choice
+  var muted     = saved.soundOn === false;        // they turned it off on purpose
+
+  var last = null;
+
+  function save() {
+    try {
+      window.localStorage.setItem(STORE_KEY, JSON.stringify({
+        rotations: Math.round(rotations * 1000) / 1000,
+        rpm: rpm,
+        direction: direction,
+        unlocked: unlocked,
+        visits: visits,
+        topRpm: topRpm,
+        soundOn: muted ? false : (soundOn || undefined)
+      }));
+    } catch (e) {
+      /* nothing to be done about it */
+    }
+  }
+
+  function maxRpm() { return unlocked ? TURBO_MAX : BASE_MAX; }
 
   function applySpin() {
+    rpm = Math.min(Math.max(rpm, MIN_RPM), maxRpm());
     rice.style.setProperty("--spin-duration", (60 / rpm) + "s");
     rice.style.animationDirection = direction === 1 ? "normal" : "reverse";
     rpmEl.textContent = Math.round(rpm);
+    if (rpm > topRpm) { topRpm = rpm; }
+    topEl.textContent = Math.round(topRpm);
+  }
+
+  function renderCounts() {
+    countEl.textContent = Math.floor(rotations).toLocaleString();
+    visitEl.textContent = Math.floor(rotations - visitBase).toLocaleString();
+    visitsEl.textContent = visits.toLocaleString();
+  }
+
+  function goTurbo(earnedNow) {
+    unlocked = true;
+    document.body.classList.add("turbo");
+    hint.textContent = "Turbo unlocked. The limit is now 6767 RPM. Good luck.";
+    if (earnedNow) {
+      banner.hidden = false;
+      airhorn();
+      window.setTimeout(function () { banner.hidden = true; }, 4200);
+    }
+    save();
   }
 
   // The counter tracks elapsed rotations rather than listening for animation
   // events, so it keeps working when the speed changes mid-spin.
+  var sinceSave = 0;
+
   function tick(now) {
     if (last !== null) {
-      rotations += ((now - last) / 1000) * (rpm / 60);
-      countEl.textContent = Math.floor(rotations).toLocaleString();
+      var dt = (now - last) / 1000;
+      rotations += dt * (rpm / 60);
+      renderCounts();
+
+      if (!unlocked && rotations >= UNLOCK_AT) { goTurbo(true); }
+
+      sinceSave += dt;
+      if (sinceSave > 3) { sinceSave = 0; save(); }
     }
     last = now;
     requestAnimationFrame(tick);
@@ -337,28 +485,65 @@
 
   // A browser tab that is hidden throttles rAF; don't credit that as spinning.
   document.addEventListener("visibilitychange", function () {
-    if (document.hidden) { last = null; }
+    if (document.hidden) { last = null; save(); }
   });
 
+  // pagehide is the one teardown event mobile Safari reliably fires.
+  window.addEventListener("pagehide", save);
+
   document.getElementById("faster").addEventListener("click", function () {
-    rpm = Math.min(rpm * 1.35, 900);
+    rpm = Math.min(rpm * 1.35, maxRpm());
     applySpin();
+    save();
   });
 
   document.getElementById("slower").addEventListener("click", function () {
-    rpm = Math.max(rpm / 1.35, 3);
+    rpm = Math.max(rpm / 1.35, MIN_RPM);
     applySpin();
+    save();
   });
 
   document.getElementById("reverse").addEventListener("click", function () {
     direction *= -1;
     applySpin();
+    save();
+  });
+
+  document.getElementById("reset").addEventListener("click", function () {
+    if (!window.confirm("Erase every rotation you have ever earned?")) { return; }
+    try { window.localStorage.removeItem(STORE_KEY); } catch (e) { /* fine */ }
+    rotations = 0;
+    visitBase = 0;
+    visits = 1;
+    rpm = 55;
+    direction = 1;
+    topRpm = 55;
+    unlocked = false;
+    document.body.classList.remove("turbo");
+    banner.hidden = true;
+    hint.textContent = "Nobody is going to stop this. Not even you.";
+    applySpin();
+    renderCounts();
+    save();
   });
 
   /* ---- optional synth loop, muted until asked for ---- */
   var audioCtx = null;
   var loopTimer = null;
   var soundBtn = document.getElementById("sound");
+  var pendingHorn = false;
+
+  // Returns true only if there's a context that is actually allowed to make
+  // noise right now. Browsers keep a context suspended until a user gesture.
+  function ensureAudio() {
+    if (!audioCtx) {
+      var Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) { return false; }
+      audioCtx = new Ctx();
+    }
+    if (audioCtx.state === "suspended") { audioCtx.resume(); }
+    return audioCtx.state === "running";
+  }
 
   function blip(when, freq, dur, type, gain) {
     var osc = audioCtx.createOscillator();
@@ -392,23 +577,102 @@
     if (loopTimer) {
       clearInterval(loopTimer);
       loopTimer = null;
+      soundOn = false;
+      muted = true;
       soundBtn.textContent = "Sound: Off";
       soundBtn.setAttribute("aria-pressed", "false");
+      save();
       return;
     }
-    if (!audioCtx) {
-      var Ctx = window.AudioContext || window.webkitAudioContext;
-      if (!Ctx) { soundBtn.disabled = true; soundBtn.textContent = "No sound"; return; }
-      audioCtx = new Ctx();
+    if (!ensureAudio()) {
+      if (!audioCtx) { soundBtn.disabled = true; soundBtn.textContent = "No sound"; return; }
     }
-    audioCtx.resume();
     nextNoteTime = audioCtx.currentTime + 0.05;
     loopTimer = setInterval(scheduler, 50);
+    soundOn = true;
+    muted = false;
     soundBtn.textContent = "Sound: On";
     soundBtn.setAttribute("aria-pressed", "true");
+    save();
   });
 
+  /* ---- the milestone klaxon ---- */
+  // Deliberately unpleasant: three detuned sirens, a noise blast, and a chord
+  // that is nobody's idea of a chord. Skipped if sound was switched off.
+  function airhorn() {
+    if (muted) { return; }
+    if (!ensureAudio()) { pendingHorn = true; return; }
+
+    var t0 = audioCtx.currentTime + 0.02;
+    var master = audioCtx.createGain();
+    master.gain.value = 0.45;
+    master.connect(audioCtx.destination);
+
+    function siren(when, dur, detune) {
+      var osc = audioCtx.createOscillator();
+      var amp = audioCtx.createGain();
+      osc.type = "sawtooth";
+      osc.detune.value = detune;
+      osc.frequency.setValueAtTime(260, when);
+      osc.frequency.exponentialRampToValueAtTime(1900, when + dur * 0.55);
+      osc.frequency.exponentialRampToValueAtTime(300, when + dur);
+      amp.gain.setValueAtTime(0.0001, when);
+      amp.gain.exponentialRampToValueAtTime(0.5, when + 0.03);
+      amp.gain.setValueAtTime(0.5, when + dur - 0.06);
+      amp.gain.exponentialRampToValueAtTime(0.0001, when + dur);
+      osc.connect(amp).connect(master);
+      osc.start(when);
+      osc.stop(when + dur + 0.05);
+    }
+
+    // Three sweeps, each doubled a few cents off so they beat against
+    // each other. That beating is what makes it grate.
+    for (var i = 0; i < 3; i++) {
+      siren(t0 + i * 0.62, 0.6, 0);
+      siren(t0 + i * 0.62, 0.6, 22);
+    }
+
+    // A blast of white noise over the top of it.
+    var frames = Math.floor(audioCtx.sampleRate * 0.5);
+    var buffer = audioCtx.createBuffer(1, frames, audioCtx.sampleRate);
+    var data = buffer.getChannelData(0);
+    for (var n = 0; n < frames; n++) { data[n] = (Math.random() * 2 - 1) * (1 - n / frames); }
+    var noise = audioCtx.createBufferSource();
+    var noiseAmp = audioCtx.createGain();
+    noise.buffer = buffer;
+    noiseAmp.gain.value = 0.3;
+    noise.connect(noiseAmp).connect(master);
+    noise.start(t0);
+
+    // Finally, a semitone-crushed "chord" to land on.
+    [233.08, 246.94, 261.63].forEach(function (f) {
+      blipTo(master, t0 + 1.9, f, 0.9, "square", 0.22);
+    });
+  }
+
+  // Same as blip(), but routed through a supplied node instead of straight out.
+  function blipTo(dest, when, freq, dur, type, gain) {
+    var osc = audioCtx.createOscillator();
+    var amp = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, when);
+    amp.gain.setValueAtTime(0.0001, when);
+    amp.gain.exponentialRampToValueAtTime(gain, when + 0.02);
+    amp.gain.exponentialRampToValueAtTime(0.0001, when + dur);
+    osc.connect(amp).connect(dest);
+    osc.start(when);
+    osc.stop(when + dur + 0.02);
+  }
+
+  // If the milestone landed before the browser trusted us with audio, fire
+  // the horn on the next thing they touch.
+  document.addEventListener("click", function () {
+    if (pendingHorn && ensureAudio()) { pendingHorn = false; airhorn(); }
+  });
+
+  if (unlocked) { goTurbo(false); }
   applySpin();
+  renderCounts();
   requestAnimationFrame(tick);
 })();
 </script>

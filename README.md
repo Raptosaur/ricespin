@@ -15,6 +15,10 @@ different subject matter.
 - A hand-drawn SVG grain of rice rotating on the Y axis, forever
 - A live rotation counter and RPM readout
 - **Faster** / **Slower** / **Reverse** controls
+- **Turbo:** the speed limit starts at 900 RPM and lifts to 6767 RPM once your
+  all-time counter passes 1000 rotations, announced with a klaxon nobody asked for
+- Progress saved to `localStorage` — all-time rotations, speed, direction,
+  visit count, top RPM, and whether turbo has been earned. **Reset** clears it
 - An optional WebAudio chiptune loop (off by default — nothing autoplays)
 - Throbbing conic-gradient backdrop, scanlines, and a marquee, because it
   would be dishonest to do this tastefully
